@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>균열 감지 – AI 기반 바닥 균열 진단</title>
+  <meta name="description" content="카메라와 가속도계를 이용해 바닥 균열의 길이, 폭, 깊이를 분석하는 AI 균열 감지 앱 데모.">
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-d: #1d4ed8;
+      --bg: #020617;
+      --border: #1f2937;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #22c55e;
+      --danger: #f97316;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #0f172a, #020617);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      width: 100%;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(16px);
+      background: rgba(2, 6, 23, 0.92);
+      border-bottom: 1px solid rgba(31, 41, 55, 0.9);
+    }
+
+    .nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 64px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 700;
+      font-size: 1.05rem;
+    }
+
+    .logo-badge {
+      width: 30px;
+      height: 30px;
+      border-radius: 0.75rem;
+      background: conic-gradient(from 160deg, #22c55e, #2563eb, #22c55e);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 0.85rem;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1.5rem;
+      font-size: 0.9rem;
+    }
+
+    .nav-links a { color: var(--muted); }
+    .nav-links a:hover { color: #f9fafb; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.55rem 1.2rem;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      border: 1px solid transparent;
+      cursor: pointer;
+      background: transparent;
+      color: var(--text);
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-d));
+      border-color: rgba(191, 219, 254, 0.35);
+      box-shadow: 0 0 24px rgba(37, 99, 235, 0.55);
+    }
+    .btn-primary:hover { filter: brightness(1.06); }
+
+    .btn-outline {
+      border-color: rgba(75, 85, 99, 0.8);
+      color: var(--muted);
+    }
+    .btn-outline:hover {
+      border-color: rgba(249, 250, 251, 0.9);
+      color: #f9fafb;
+    }
+
+    main { padding-bottom: 4rem; }
+
+    /* hero */
+    .hero {
+      padding: 3.2rem 0 2.5rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+      gap: 3rem;
+      align-items: center;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      color: var(--muted);
+      margin-bottom: 0.8rem;
+      background: rgba(15, 23, 42, 0.9);
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 12px rgba(34, 197, 94, 0.8);
+    }
+
+    .hero-title {
+      font-size: clamp(2.1rem, 3.2vw, 2.7rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.9rem;
+    }
+
+    .hero-highlight {
+      background: linear-gradient(120deg, #bfdbfe, #22c55e);
+      -webkit-background-clip: text;
+      color: transparent;
+    }
+
+    .hero-subtitle {
+      font-size: 0.98rem;
+      color: var(--muted);
+      max-width: 33rem;
+      margin-bottom: 1.4rem;
+    }
+
+    .hero-cta {
+      display: flex;
+      gap: 0.8rem;
+      margin-bottom: 1.3rem;
+      flex-wrap: wrap;
+    }
+
+    .hero-meta {
+      display: flex;
+      gap: 1.8rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+
+    .hero-meta strong {
+      color: #e5e7eb;
+      display: block;
+      font-size: 0.9rem;
+    }
+
+    /* right: demo panel */
+    .demo-card {
+      background: radial-gradient(circle at top left, #0f172a, #020617);
+      border-radius: 1.4rem;
+      padding: 1.1rem;
+      border: 1px solid rgba(31, 41, 55, 1);
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.9);
+    }
+
+    .demo-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.7rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .demo-tag {
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      border: 1px solid rgba(75, 85, 99, 0.9);
+      font-size: 0.7rem;
+    }
+
+    .demo-body { display: grid; gap: 0.7rem; }
+
+    .panel {
+      border-radius: 0.9rem;
+      border: 1px solid var(--border);
+      padding: 0.7rem;
+      background: rgba(15, 23, 42, 0.9);
+    }
+
+    .panel-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+    }
+
+    .panel-sub {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .file-input {
+      font-size: 0.76rem;
+      color: var(--muted);
+    }
+
+    .preview {
+      margin-top: 0.6rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+      gap: 0.6rem;
+    }
+
+    .preview-box {
+      position: relative;
+      border-radius: 0.7rem;
+      border: 1px dashed rgba(75, 85, 99, 0.9);
+      min-height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      background: rgba(15, 23, 42, 0.7);
+    }
+
+    .preview-box img {
+      max-width: 100%;
+      max-height: 260px;
+      display: block;
+    }
+
+    #overlayCanvas {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .overlay-legend {
+      position: absolute;
+      bottom: 6px;
+      left: 6px;
+      font-size: 0.7rem;
+      background: rgba(15, 23, 42, 0.8);
+      padding: 2px 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      color: var(--muted);
+    }
+
+    .results {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.25rem;
+      font-size: 0.8rem;
+    }
+
+    .result-label { color: var(--muted); }
+    .result-value { font-weight: 600; }
+
+    .result-value.danger { color: var(--danger); }
+    .result-value.safe { color: var(--accent); }
+
+    .accel-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .accel-row span:first-child { color: #a5b4fc; }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.75rem;
+      padding: 0.12rem 0.55rem;
+      border-radius: 999px;
+      background: rgba(22, 163, 74, 0.08);
+      border: 1px solid rgba(22, 163, 74, 0.8);
+      color: #bbf7d0;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #22c55e;
+    }
+
+    .section { padding: 2.5rem 0 0; }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 1.2rem;
+      gap: 1.4rem;
+      flex-wrap: wrap;
+    }
+
+    .section-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+    }
+
+    .section-subtitle {
+      font-size: 0.9rem;
+      color: var(--muted);
+      max-width: 26rem;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1.1rem;
+    }
+
+    .feature-card {
+      background: rgba(15, 23, 42, 0.95);
+      border-radius: 1rem;
+      border: 1px solid rgba(31, 41, 55, 1);
+      padding: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .feature-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 0.3rem;
+    }
+
+    .feature-name {
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+    }
+
+    .feature-desc {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .cta {
+      margin-top: 2.4rem;
+      padding: 1.4rem;
+      border-radius: 1.2rem;
+      border: 1px solid rgba(31, 41, 55, 1);
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.18), rgba(2, 6, 23, 0.98));
+      display: flex;
+      justify-content: space-between;
+      gap: 1.4rem;
+      align-items: center;
+      font-size: 0.9rem;
+      flex-wrap: wrap;
+    }
+
+    .cta h2 {
+      font-size: 1.05rem;
+      margin-bottom: 0.3rem;
+    }
+
+    footer {
+      padding: 1.8rem 0 0.7rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    footer a { color: var(--muted); }
+    footer a:hover { color: #e5e7eb; }
+
+    @media (max-width: 960px) {
+      .hero { grid-template-columns: 1fr; }
+      .demo-card { max-width: 420px; margin: 0 auto; }
+      .feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .nav-links { display: none; }
+    }
+
+    @media (max-width: 640px) {
+      .hero { padding-top: 2.4rem; }
+      .feature-grid { grid-template-columns: 1fr; }
+      .preview { grid-template-columns: 1fr; }
+      .cta { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <div class="logo">
+        <div class="logo-badge">균열</div>
+        <span>균열 감지</span>
+      </div>
+      <nav class="nav-links">
+        <a href="#how">동작원리</a>
+        <a href="#features">핵심 기능</a>
+        <a href="#demo">데모</a>
+      </nav>
+      <div>
+        <a href="#demo" class="btn btn-outline">웹 데모 실행</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="container hero">
+      <div>
+        <div class="hero-badge">
+          <span class="dot"></span>
+          <span>카메라 + 가속도계 + AI 기반 균열 진단 (데모)</span>
+        </div>
+        <h1 class="hero-title">
+          바닥 균열의 <span class="hero-highlight">길이·폭·깊이</span>를<br />
+          스마트폰 한 대로 계측
+        </h1>
+        <p class="hero-subtitle">
+          이 페이지는 균열 감지 앱의 UI 데모입니다. 스마트폰 카메라와 가속도계 센서 값을 활용해
+          균열의 길이·폭·깊이를 분석하고, 이미지 위에 AI가 인식한 균열 기준선을 빨간 라인으로 표시하는 모습을 시뮬레이션합니다.
+        </p>
+        <div class="hero-cta">
+          <a href="#demo" class="btn btn-primary">균열 사진 올리고 데모 분석</a>
+          <a href="#how" class="btn btn-outline">센서·AI 구조 보기</a>
+        </div>
+        <div class="hero-meta">
+          <div>
+            <strong>카메라·파일 업로드</strong>
+            현장 촬영 또는 기존 균열 사진 불러오기
+          </div>
+          <div>
+            <strong>균열 기준선 표시</strong>
+            이미지 위 빨간 라인으로 AI 인식 결과 시각화
+          </div>
+          <div>
+            <strong>가속도계 캡처</strong>
+            촬영 시점 센서 값 별도로 저장(데모용)
+          </div>
+        </div>
+      </div>
+
+      <section id="demo" class="demo-card" aria-label="균열 감지 데모">
+        <div class="demo-header">
+          <span>균열 감지 · 웹 데모 UI</span>
+          <span class="demo-tag">단일 HTML 파일</span>
+        </div>
+        <div class="demo-body">
+          <div class="panel">
+            <div class="panel-title">1. 균열 이미지 입력</div>
+            <div class="panel-sub">
+              균열 사진을 업로드하거나 카메라로 촬영합니다. 이미지를 선택한 시점의 가속도계 값을 “촬영 기준 값”으로 저장합니다.
+            </div>
+            <div class="input-row" style="margin-bottom:0.5rem;">
+              <label class="btn btn-outline" for="cameraInput">카메라로 촬영</label>
+              <input id="cameraInput" class="file-input" type="file" accept="image/*" capture="environment" style="max-width:180px;">
+            </div>
+            <div class="input-row">
+              <label class="btn btn-outline" for="fileInput">이미지 파일 업로드</label>
+              <input id="fileInput" class="file-input" type="file" accept="image/*">
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">2. 가속도계 센서</div>
+            <div class="panel-sub">
+              · 아래는 실시간 센서 값(지원되지 않는 환경에서는 “지원되지 않음”으로 표시)<br>
+              · 이미지 선택 시점의 값은 “촬영 기준 값”으로 별도 저장됩니다.
+            </div>
+            <div class="accel-row" style="margin-bottom:0.25rem;">
+              <span>실시간 X (좌우)</span>
+              <span id="accelX">연결 대기</span>
+            </div>
+            <div class="accel-row" style="margin-bottom:0.25rem;">
+              <span>실시간 Y (앞뒤)</span>
+              <span id="accelY">연결 대기</span>
+            </div>
+            <div class="accel-row" style="margin-bottom:0.25rem;">
+              <span>실시간 Z (수직)</span>
+              <span id="accelZ">연결 대기</span>
+            </div>
+            <div style="margin-top:0.45rem;font-size:0.74rem;color:var(--muted);">
+              <strong>촬영 기준 값</strong> (이미지 선택 시점 캡처):
+            </div>
+            <div class="accel-row" style="margin-top:0.2rem;">
+              <span>X / Y / Z</span>
+              <span id="accelCapture">-</span>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">3. 균열 분석 데모</div>
+            <div class="panel-sub">
+              「분석 실행」을 누르면 데모용 로직이 균열 길이·폭·깊이를 랜덤으로 생성하고,
+              이미지 위에 빨간 라인으로 균열 기준선을 표시합니다.
+            </div>
+            <div class="preview">
+              <div class="preview-box">
+                <span id="previewPlaceholder" style="font-size:0.78rem;color:var(--muted);padding:0.4rem;text-align:center;">
+                  균열 이미지를 선택하면 이 영역에 미리보기와<br>빨간 균열 기준선이 표시됩니다.
+                </span>
+                <img id="previewImage" alt="균열 미리보기" style="display:none;" />
+                <canvas id="overlayCanvas"></canvas>
+                <div class="overlay-legend" id="overlayLegend" style="display:none;">
+                  빨간 라인: AI 인식 균열 기준선 (데모)
+                </div>
+              </div>
+              <div class="results">
+                <div style="margin-bottom:0.35rem;display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:0.8rem;color:var(--muted);">균열 분석 결과 (샘플)</span>
+                  <button id="analyzeBtn" class="btn btn-primary" type="button">분석 실행</button>
+                </div>
+                <div class="result-row">
+                  <span class="result-label">균열 길이</span>
+                  <span id="lenResult" class="result-value">-</span>
+                </div>
+                <div class="result-row">
+                  <span class="result-label">균열 폭</span>
+                  <span id="widthResult" class="result-value">-</span>
+                </div>
+                <div class="result-row">
+                  <span class="result-label">균열 깊이(추정)</span>
+                  <span id="depthResult" class="result-value">-</span>
+                </div>
+                <div class="result-row">
+                  <span class="result-label">심각도 등급</span>
+                  <span id="severityResult" class="result-value">-</span>
+                </div>
+                <div style="margin-top:0.5rem;">
+                  <span id="statusPill" class="status-pill" style="display:none;">
+                    <span class="status-dot"></span>
+                    <span id="statusText"></span>
+                  </span>
+                </div>
+                <div id="errorText" style="margin-top:0.5rem;font-size:0.75rem;color:#fca5a5;display:none;"></div>
+                <div style="margin-top:0.6rem;font-size:0.72rem;color:var(--muted);">
+                  · 실제 AI 서버를 붙일 때는 이 데모 로직을 서버 응답으로 교체하고,<br>
+                  · 균열 중심선 좌표(<code>crack_polyline</code>)를 이미지 너비·높이로 정규화해서 넘겨주면 됩니다.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section id="how" class="section">
+      <div class="container">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">균열 감지의 목표 구조</h2>
+          </div>
+          <p class="section-subtitle">
+            카메라로 균열 영상을 취득하고, 촬영 시점의 가속도계 값을 기준으로 자세를 보정한 뒤,
+            AI가 균열 형상을 분석하여 길이·폭·깊이와 심각도를 산정하는 구조를 가정한 데모입니다.
+          </p>
+        </div>
+
+        <div class="feature-grid">
+          <article class="feature-card">
+            <div class="feature-label">Step 01</div>
+            <h3 class="feature-name">균열 영상 취득</h3>
+            <p class="feature-desc">
+              · 바닥 균열을 근접 촬영<br>
+              · 기준 스케일(자, 마커)과 함께 촬영해 픽셀-실거리 변환<br>
+              · 조도·블러 검사로 부적합 이미지 필터링
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-label">Step 02</div>
+            <h3 class="feature-name">촬영 시점 자세 보정</h3>
+            <p class="feature-desc">
+              · 촬영 시점 가속도계 값만 캡처해 기준으로 사용<br>
+              · 카메라–바닥면 각도를 보정해 실제 거리 재계산<br>
+              · 촬영 조건을 메타데이터로 함께 저장
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-label">Step 03</div>
+            <h3 class="feature-name">AI 균열 분석 및 시각화</h3>
+            <p class="feature-desc">
+              · 균열 중심선을 추출하여 길이·폭·깊이 추정<br>
+              · 심각도(경미/주의/심각) 등급화<br>
+              · 이미지 위에 균열 기준선을 빨간 라인으로 시각화
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="section">
+      <div class="container">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">균열 감지 앱의 확장 방향</h2>
+          </div>
+          <p class="section-subtitle">
+            이 데모 UI 위에 실제 AI 모델과 데이터 저장 로직을 연결하면,
+            현장 계측·기록·리포트까지 하나의 앱에서 수행할 수 있습니다.
+          </p>
+        </div>
+
+        <div class="feature-grid">
+          <article class="feature-card">
+            <div class="feature-label">Field</div>
+            <h3 class="feature-name">현장 친화 인터페이스</h3>
+            <p class="feature-desc">
+              · 한 손 조작 기준의 촬영 플로우<br>
+              · 적정 거리·각도 안내 오버레이<br>
+              · 오프라인 모드에서 임시 저장
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-label">AI</div>
+            <h3 class="feature-name">온디바이스 / 서버형 분석</h3>
+            <p class="feature-desc">
+              · 단말 내 경량 모델로 1차 분석<br>
+              · 서버형 고정밀 모델로 재분석<br>
+              · 시계열 분석으로 균열 진행 추적
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-label">Data</div>
+            <h3 class="feature-name">계측 데이터 관리</h3>
+            <p class="feature-desc">
+              · 위치·시간·구간 정보와 함께 저장<br>
+              · 엑셀/PDF 리포트 자동 생성<br>
+              · 노선·구간 단위 통계·지도화
+            </p>
+          </article>
+        </div>
+
+        <div class="cta">
+          <div>
+            <h2>UI는 준비 완료, AI만 연결하면 됩니다</h2>
+            <p>
+              이 HTML 파일은 균열 감지 앱의 웹 UI 데모입니다. 균열 라인 오버레이와 결과 표시 구조는 완성되어 있으니,
+              이후 백엔드/온디바이스 AI 모델만 붙이면 바로 실사용 구조로 확장할 수 있습니다.
+            </p>
+          </div>
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+            <a href="#demo" class="btn btn-primary">데모 다시 실행</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="container">
+      <footer>
+        <div>© <span id="year"></span> 균열 감지. All rights reserved.</div>
+        <div style="display:flex;gap:1rem;">
+          <a href="#">이용약관</a>
+          <a href="#">개인정보 처리방침</a>
+        </div>
+      </footer>
+    </div>
+  </main>
+
+  <script>
+    // 연도 표시
+    (function () {
+      var yearSpan = document.getElementById("year");
+      if (yearSpan) {
+        yearSpan.textContent = new Date().getFullYear();
+      }
+    })();
+
+    // 요소 참조
+    var previewImage = document.getElementById("previewImage");
+    var overlayCanvas = document.getElementById("overlayCanvas");
+    var overlayLegend = document.getElementById("overlayLegend");
+    var previewPlaceholder = document.getElementById("previewPlaceholder");
+    var fileInput = document.getElementById("fileInput");
+    var cameraInput = document.getElementById("cameraInput");
+
+    var accelXEl = document.getElementById("accelX");
+    var accelYEl = document.getElementById("accelY");
+    var accelZEl = document.getElementById("accelZ");
+    var accelCaptureEl = document.getElementById("accelCapture");
+
+    var analyzeBtn = document.getElementById("analyzeBtn");
+    var lenResult = document.getElementById("lenResult");
+    var widthResult = document.getElementById("widthResult");
+    var depthResult = document.getElementById("depthResult");
+    var severityResult = document.getElementById("severityResult");
+    var statusPill = document.getElementById("statusPill");
+    var statusText = document.getElementById("statusText");
+    var errorText = document.getElementById("errorText");
+
+    var selectedFile = null;
+
+    var lastAccelX = null;
+    var lastAccelY = null;
+    var lastAccelZ = null;
+
+    var captureAccelX = null;
+    var captureAccelY = null;
+    var captureAccelZ = null;
+
+    function clearOverlay() {
+      if (!overlayCanvas) return;
+      var ctx = overlayCanvas.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+      if (overlayLegend) {
+        overlayLegend.style.display = "none";
+      }
+    }
+
+    function resizeCanvasToImage() {
+      if (!previewImage || previewImage.style.display === "none") return;
+      if (!overlayCanvas) return;
+      var rect = previewImage.getBoundingClientRect();
+      overlayCanvas.width = rect.width || previewImage.naturalWidth || 300;
+      overlayCanvas.height = rect.height || previewImage.naturalHeight || 150;
+    }
+
+    function drawCrackOverlay(polyline) {
+      if (!Array.isArray(polyline) || polyline.length < 2) {
+        clearOverlay();
+        return;
+      }
+      resizeCanvasToImage();
+      if (!overlayCanvas) return;
+      var ctx = overlayCanvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+      var w = overlayCanvas.width;
+      var h = overlayCanvas.height;
+
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "red";
+      ctx.fillStyle = "red";
+
+      ctx.beginPath();
+      for (var i = 0; i < polyline.length; i++) {
+        var p = polyline[i];
+        var x = (p[0] || 0) * w;
+        var y = (p[1] || 0) * h;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      for (var j = 0; j < polyline.length; j++) {
+        var p2 = polyline[j];
+        var x2 = (p2[0] || 0) * w;
+        var y2 = (p2[1] || 0) * h;
+        ctx.beginPath();
+        ctx.arc(x2, y2, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      if (overlayLegend) {
+        overlayLegend.style.display = "block";
+      }
+    }
+
+    function captureBaselineAccel() {
+      if (!accelCaptureEl) return;
+      if (lastAccelX === null || lastAccelY === null || lastAccelZ === null) {
+        accelCaptureEl.textContent = "센서 값 없음 (실시간 값 확보 후 촬영 권장)";
+        return;
+      }
+      captureAccelX = lastAccelX;
+      captureAccelY = lastAccelY;
+      captureAccelZ = lastAccelZ;
+      accelCaptureEl.textContent =
+        captureAccelX.toFixed(2) + " / " +
+        captureAccelY.toFixed(2) + " / " +
+        captureAccelZ.toFixed(2) + " m/s²";
+    }
+
+    function handleImageFile(file) {
+      if (!file) return;
+      selectedFile = file;
+      clearOverlay();
+
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        if (previewPlaceholder) previewPlaceholder.style.display = "none";
+        if (previewImage) {
+          previewImage.style.display = "block";
+          previewImage.src = e.target.result;
+          previewImage.onload = function () {
+            resizeCanvasToImage();
+            captureBaselineAccel();
+          };
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    if (fileInput) {
+      fileInput.addEventListener("change", function (e) {
+        var file = e.target.files && e.target.files[0];
+        handleImageFile(file);
+      });
+    }
+
+    if (cameraInput) {
+      cameraInput.addEventListener("change", function (e) {
+        var file = e.target.files && e.target.files[0];
+        handleImageFile(file);
+      });
+    }
+
+    function handleMotion(event) {
+      var acc = null;
+      if (event) {
+        if (event.accelerationIncludingGravity) {
+          acc = event.accelerationIncludingGravity;
+        } else if (event.acceleration) {
+          acc = event.acceleration;
+        }
+      }
+      if (!acc) return;
+
+      lastAccelX = acc.x || 0;
+      lastAccelY = acc.y || 0;
+      lastAccelZ = acc.z || 0;
+
+      if (accelXEl) accelXEl.textContent = lastAccelX.toFixed(2) + " m/s²";
+      if (accelYEl) accelYEl.textContent = lastAccelY.toFixed(2) + " m/s²";
+      if (accelZEl) accelZEl.textContent = lastAccelZ.toFixed(2) + " m/s²";
+    }
+
+    function initAccel() {
+      if (typeof window === "undefined") return;
+
+      if (typeof window.DeviceMotionEvent === "undefined") {
+        if (accelXEl) accelXEl.textContent = "지원되지 않음";
+        if (accelYEl) accelYEl.textContent = "지원되지 않음";
+        if (accelZEl) accelZEl.textContent = "지원되지 않음";
+        if (accelCaptureEl) accelCaptureEl.textContent = "지원되지 않음";
+        return;
+      }
+
+      try {
+        var DME = window.DeviceMotionEvent;
+        if (DME && typeof DME.requestPermission === "function") {
+          DME.requestPermission().then(function (state) {
+            if (state === "granted") {
+              window.addEventListener("devicemotion", handleMotion);
+            } else {
+              if (accelXEl) accelXEl.textContent = "권한 거부됨";
+              if (accelYEl) accelYEl.textContent = "권한 거부됨";
+              if (accelZEl) accelZEl.textContent = "권한 거부됨";
+            }
+          }).catch(function () {
+            if (accelXEl) accelXEl.textContent = "권한 요청 실패";
+            if (accelYEl) accelYEl.textContent = "권한 요청 실패";
+            if (accelZEl) accelZEl.textContent = "권한 요청 실패";
+          });
+        } else {
+          window.addEventListener("devicemotion", handleMotion);
+        }
+      } catch (e) {
+        if (accelXEl) accelXEl.textContent = "센서 오류";
+        if (accelYEl) accelYEl.textContent = "센서 오류";
+        if (accelZEl) accelZEl.textContent = "센서 오류";
+      }
+    }
+
+    initAccel();
+
+    function resetResults() {
+      if (lenResult) lenResult.textContent = "-";
+      if (widthResult) widthResult.textContent = "-";
+      if (depthResult) depthResult.textContent = "-";
+      if (severityResult) {
+        severityResult.textContent = "-";
+        severityResult.classList.remove("safe");
+        severityResult.classList.remove("danger");
+      }
+      if (statusPill) statusPill.style.display = "none";
+      if (errorText) {
+        errorText.style.display = "none";
+        errorText.textContent = "";
+      }
+      clearOverlay();
+    }
+
+    if (analyzeBtn) {
+      analyzeBtn.addEventListener("click", function () {
+        resetResults();
+
+        if (!selectedFile) {
+          if (errorText) {
+            errorText.textContent = "먼저 균열 이미지를 업로드하거나 촬영해 주세요.";
+            errorText.style.display = "block";
+          }
+          return;
+        }
+
+        analyzeBtn.disabled = true;
+        analyzeBtn.textContent = "분석 중...";
+        analyzeBtn.classList.add("btn-outline");
+
+        // 데모용 랜덤 분석
+        var lengthVal = (0.5 + Math.random() * 3.0).toFixed(2); // m
+        var widthVal = (0.1 + Math.random() * 2.0).toFixed(2);  // mm
+        var depthVal = (1 + Math.random() * 25).toFixed(1);     // mm
+
+        var depthNum = parseFloat(depthVal);
+        var severity = "";
+        var status = "";
+        var cls = "";
+
+        if (depthNum < 5) {
+          severity = "경미";
+          status = "현장 모니터링 권장";
+          cls = "safe";
+        } else if (depthNum < 15) {
+          severity = "주의";
+          status = "보수 계획 검토 필요";
+          cls = "danger";
+        } else {
+          severity = "심각";
+          status = "긴급 보수 검토 필요";
+          cls = "danger";
+        }
+
+        if (lenResult) lenResult.textContent = lengthVal + " m";
+        if (widthResult) widthResult.textContent = widthVal + " mm";
+        if (depthResult) depthResult.textContent = depthVal + " mm";
+        if (severityResult) {
+          severityResult.textContent = severity;
+          if (cls === "safe") severityResult.classList.add("safe");
+          if (cls === "danger") severityResult.classList.add("danger");
+        }
+        if (statusText) statusText.textContent = status;
+        if (statusPill) statusPill.style.display = "inline-flex";
+
+        // 데모용 균열 중심선 (0~1 정규화 좌표)
+        var demoPolyline = [
+          [0.2, 0.3],
+          [0.35, 0.34],
+          [0.5, 0.38],
+          [0.65, 0.42],
+          [0.8, 0.46]
+        ];
+        drawCrackOverlay(demoPolyline);
+
+        analyzeBtn.disabled = false;
+        analyzeBtn.textContent = "분석 실행";
+        analyzeBtn.classList.remove("btn-outline");
+      });
+    }
+  </script>
+</body>
+</html>
