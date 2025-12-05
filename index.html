@@ -2,319 +2,833 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>자동 균열 감지 (주변 대비 이상 어두운 부분 탐지)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>균열 감지 – AI 기반 바닥 균열 진단</title>
+  <meta name="description" content="카메라와 가속도계를 이용해 바닥 균열의 길이, 폭, 깊이를 분석하는 AI 균열 감지 앱.">
   <style>
+    :root {
+      --primary: #2563eb;
+      --primary-d: #1d4ed8;
+      --bg: #020617;
+      --panel: #020617;
+      --card: #020617;
+      --border: #1f2937;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #22c55e;
+      --danger: #f97316;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-      margin:0; padding:16px; background:#f3f4f6;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #0f172a, #020617);
+      color: var(--text);
+      line-height: 1.5;
     }
-    h1 { font-size:20px; margin-bottom:8px; }
-    .card {
-      background:#fff; border-radius:10px; padding:12px; margin-bottom:12px;
-      box-shadow:0 2px 4px rgba(0,0,0,0.08);
+
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      width: 100%;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
     }
-    label { font-size:14px; font-weight:500; }
-    input[type="file"], input[type="number"], input[type="range"] {
-      margin-top:4px; margin-bottom:8px; font-size:14px;
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(16px);
+      background: rgba(2, 6, 23, 0.92);
+      border-bottom: 1px solid rgba(31, 41, 55, 0.9);
     }
-    input[type="number"] { padding:4px 8px; width:120px; }
-    button {
-      padding:8px 14px; border-radius:8px; border:none;
-      background:#2563eb; color:#fff; font-size:14px; cursor:pointer;
-      margin-top:4px;
+
+    .nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 64px;
     }
-    button:active { opacity:0.9; }
-    canvas {
-      width:100%; max-width:480px; border-radius:8px; background:#111827;
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 700;
+      font-size: 1.05rem;
     }
-    #status { font-size:13px; color:#4b5563; margin-top:4px; }
-    #resultText { font-size:14px; white-space:pre-line; }
-    small { font-size:12px; color:#6b7280; }
+
+    .logo-badge {
+      width: 30px;
+      height: 30px;
+      border-radius: 0.75rem;
+      background: conic-gradient(from 160deg, #22c55e, #2563eb, #22c55e);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 0.85rem;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1.5rem;
+      font-size: 0.9rem;
+    }
+
+    .nav-links a { color: var(--muted); }
+    .nav-links a:hover { color: #f9fafb; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.55rem 1.2rem;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      border: 1px solid transparent;
+      cursor: pointer;
+      background: transparent;
+      color: var(--text);
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-d));
+      border-color: rgba(191, 219, 254, 0.35);
+      box-shadow: 0 0 24px rgba(37, 99, 235, 0.55);
+    }
+    .btn-primary:hover { filter: brightness(1.06); }
+
+    .btn-outline {
+      border-color: rgba(75, 85, 99, 0.8);
+      color: var(--muted);
+    }
+    .btn-outline:hover {
+      border-color: rgba(249, 250, 251, 0.9);
+      color: #f9fafb;
+    }
+
+    main {
+      padding-bottom: 4rem;
+    }
+
+    /* hero */
+    .hero {
+      padding: 3.2rem 0 2.5rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+      gap: 3rem;
+      align-items: center;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      color: var(--muted);
+      margin-bottom: 0.8rem;
+      background: rgba(15, 23, 42, 0.9);
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 12px rgba(34, 197, 94, 0.8);
+    }
+
+    .hero-title {
+      font-size: clamp(2.1rem, 3.2vw, 2.7rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.9rem;
+    }
+
+    .hero-highlight {
+      background: linear-gradient(120deg, #bfdbfe, #22c55e);
+      -webkit-background-clip: text;
+      color: transparent;
+    }
+
+    .hero-subtitle {
+      font-size: 0.98rem;
+      color: var(--muted);
+      max-width: 33rem;
+      margin-bottom: 1.4rem;
+    }
+
+    .hero-cta {
+      display: flex;
+      gap: 0.8rem;
+      margin-bottom: 1.3rem;
+      flex-wrap: wrap;
+    }
+
+    .hero-meta {
+      display: flex;
+      gap: 1.8rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+
+    .hero-meta strong {
+      color: #e5e7eb;
+      display: block;
+      font-size: 0.9rem;
+    }
+
+    /* right: demo panel */
+    .demo-card {
+      background: radial-gradient(circle at top left, #0f172a, #020617);
+      border-radius: 1.4rem;
+      padding: 1.1rem;
+      border: 1px solid rgba(31, 41, 55, 1);
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.9);
+    }
+
+    .demo-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.7rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .demo-tag {
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      border: 1px solid rgba(75, 85, 99, 0.9);
+      font-size: 0.7rem;
+    }
+
+    .demo-body {
+      display: grid;
+      gap: 0.7rem;
+    }
+
+    .panel {
+      border-radius: 0.9rem;
+      border: 1px solid var(--border);
+      padding: 0.7rem;
+      background: rgba(15, 23, 42, 0.9);
+    }
+
+    .panel-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+    }
+
+    .panel-sub {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .file-input {
+      font-size: 0.76rem;
+      color: var(--muted);
+    }
+
+    .preview {
+      margin-top: 0.6rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+      gap: 0.6rem;
+    }
+
+    .preview-box {
+      border-radius: 0.7rem;
+      border: 1px dashed rgba(75, 85, 99, 0.9);
+      min-height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      background: rgba(15, 23, 42, 0.7);
+    }
+
+    .preview-box img {
+      max-width: 100%;
+      max-height: 220px;
+      display: block;
+    }
+
+    .results {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.25rem;
+      font-size: 0.8rem;
+    }
+
+    .result-label { color: var(--muted); }
+    .result-value { font-weight: 600; }
+
+    .result-value.danger { color: var(--danger); }
+    .result-value.safe { color: var(--accent); }
+
+    .accel-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .accel-row span:first-child { color: #a5b4fc; }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.75rem;
+      padding: 0.12rem 0.55rem;
+      border-radius: 999px;
+      background: rgba(22, 163, 74, 0.08);
+      border: 1px solid rgba(22, 163, 74, 0.8);
+      color: #bbf7d0;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #22c55e;
+    }
+
+    /* sections */
+    .section {
+      padding: 2.5rem 0 0;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 1.2rem;
+      gap: 1.4rem;
+      flex-wrap: wrap;
+    }
+
+    .section-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+    }
+
+    .section-subtitle {
+      font-size: 0.9rem;
+      color: var(--muted);
+      max-width: 26rem;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1.1rem;
+    }
+
+    .feature-card {
+      background: rgba(15, 23, 42, 0.95);
+      border-radius: 1rem;
+      border: 1px solid rgba(31, 41, 55, 1);
+      padding: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .feature-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 0.3rem;
+    }
+
+    .feature-name {
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+    }
+
+    .feature-desc {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .cta {
+      margin-top: 2.4rem;
+      padding: 1.4rem;
+      border-radius: 1.2rem;
+      border: 1px solid rgba(31, 41, 55, 1);
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.18), rgba(2, 6, 23, 0.98));
+      display: flex;
+      justify-content: space-between;
+      gap: 1.4rem;
+      align-items: center;
+      font-size: 0.9rem;
+      flex-wrap: wrap;
+    }
+
+    .cta h2 {
+      font-size: 1.05rem;
+      margin-bottom: 0.3rem;
+    }
+
+    footer {
+      padding: 1.8rem 0 0.7rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    footer a { color: var(--muted); }
+    footer a:hover { color: #e5e7eb; }
+
+    @media (max-width: 960px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+      .demo-card {
+        max-width: 420px;
+        margin: 0 auto;
+      }
+      .feature-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .nav-links { display: none; }
+    }
+
+    @media (max-width: 640px) {
+      .hero { padding-top: 2.4rem; }
+      .feature-grid {
+        grid-template-columns: 1fr;
+      }
+      .preview {
+        grid-template-columns: 1fr;
+      }
+      .cta { flex-direction: column; align-items: flex-start; }
+    }
   </style>
 </head>
 <body>
-  <h1>자동 균열 감지 (로컬 대비 이상 어두운 부분)</h1>
+  <header>
+    <div class="container nav">
+      <div class="logo">
+        <div class="logo-badge">균열</div>
+        <span>균열 감지</span>
+      </div>
+      <nav class="nav-links">
+        <a href="#how">동작원리</a>
+        <a href="#features">핵심 기능</a>
+        <a href="#demo">데모</a>
+      </nav>
+      <div>
+        <a href="#demo" class="btn btn-outline">웹 데모 실행</a>
+      </div>
+    </div>
+  </header>
 
-  <div class="card">
-    <p style="font-size:14px;">
-      한 장의 사진에서, <strong>주변보다 비정상적으로 어두운 긴 띠</strong>를 자동으로 찾아<br/>
-      균열 후보를 <strong>빨간색으로 표시</strong>합니다. (딥러닝 없음, 순수 영상처리)
-    </p>
+  <main>
+    <!-- HERO -->
+    <section class="container hero">
+      <div>
+        <div class="hero-badge">
+          <span class="dot"></span>
+          <span>카메라 + 가속도계 + AI 기반 균열 진단</span>
+        </div>
+        <h1 class="hero-title">
+          바닥 균열의 <span class="hero-highlight">길이·폭·깊이</span>를<br />
+          스마트폰 한 대로 계측
+        </h1>
+        <p class="hero-subtitle">
+          균열 감지는 스마트폰 카메라와 가속도계 센서를 이용해 바닥면 균열을 촬영하고,
+          AI가 균열 형상을 분석해 길이, 폭, 깊이를 추정하는 앱입니다.
+          현장에서 바로 측정하고, 결과를 저장·관리할 수 있습니다.
+        </p>
+        <div class="hero-cta">
+          <a href="#demo" class="btn btn-primary">균열 사진 올리고 바로 분석</a>
+          <a href="#how" class="btn btn-outline">센서·AI 동작원리 보기</a>
+        </div>
+        <div class="hero-meta">
+          <div>
+            <strong>카메라·파일 업로드 지원</strong>
+            현장 촬영 또는 기존 균열 사진 불러오기
+          </div>
+          <div>
+            <strong>AI 자동 분석</strong>
+            균열 치수·심각도·등급 자동 산정
+          </div>
+          <div>
+            <strong>가속도계 기반 보정</strong>
+            기울기·자세를 반영한 거리 추정
+          </div>
+        </div>
+      </div>
 
-    <label>사진 속 1cm가 몇 픽셀인지 (대략, 모르면 40):</label><br/>
-    <input id="pxPerCm" type="number" min="1" value="40" /> px/cm
-    <br/>
-    <small>예) 화면에서 자로 잰 10cm ≈ 400px → 1cm ≈ 40px (5cm ≈ 200px)</small><br/><br/>
+      <!-- DEMO PANEL -->
+      <section id="demo" class="demo-card" aria-label="균열 감지 데모">
+        <div class="demo-header">
+          <span>균열 감지 · 웹 데모 UI</span>
+          <span class="demo-tag">AI 분석 결과 화면 예시</span>
+        </div>
+        <div class="demo-body">
+          <!-- 입력 패널 -->
+          <div class="panel">
+            <div class="panel-title">1. 균열 이미지 입력</div>
+            <div class="panel-sub">
+              바닥면 균열을 촬영하거나, 이미 확보한 균열 사진을 업로드합니다.
+            </div>
+            <div class="input-row" style="margin-bottom:0.5rem;">
+              <label class="btn btn-outline" for="cameraInput">카메라로 촬영</label>
+              <input id="cameraInput" class="file-input" type="file"
+                     accept="image/*" capture="environment" style="max-width:180px;">
+            </div>
+            <div class="input-row">
+              <label class="btn btn-outline" for="fileInput">이미지 파일 업로드</label>
+              <input id="fileInput" class="file-input" type="file" accept="image/*">
+            </div>
+          </div>
 
-    <label>감도 (높을수록 민감, 더 많이 잡음): <span id="sensitivityLabel">50</span></label><br/>
-    <input id="sensitivity" type="range" min="0" max="100" value="50" />
-    <br/>
+          <!-- 가속도계 패널 -->
+          <div class="panel">
+            <div class="panel-title">2. 가속도계 센서 상태</div>
+            <div class="panel-sub">
+              스마트폰 가속도계로 기울기·자세를 측정해 균열 치수 계산에 반영합니다.
+            </div>
+            <div class="accel-row" style="margin-bottom:0.25rem;">
+              <span>X (좌우)</span>
+              <span id="accelX">연결 대기</span>
+            </div>
+            <div class="accel-row" style="margin-bottom:0.25rem;">
+              <span>Y (앞뒤)</span>
+              <span id="accelY">연결 대기</span>
+            </div>
+            <div class="accel-row" style="margin-bottom:0.25rem;">
+              <span>Z (수직)</span>
+              <span id="accelZ">연결 대기</span>
+            </div>
+            <div style="margin-top:0.4rem;font-size:0.72rem;color:var(--muted);">
+              모바일 브라우저에서 센서 사용을 허용하면 값이 실시간으로 갱신됩니다.
+            </div>
+          </div>
 
-    <label>사진 선택:</label><br/>
-    <input id="fileInput" type="file" accept="image/*" /><br/>
-    <button id="btnRun">자동 균열 감지</button>
-    <div id="status">사진을 선택한 뒤 [자동 균열 감지]를 누르세요.</div>
-  </div>
+          <!-- 미리보기 + 결과 -->
+          <div class="panel">
+            <div class="panel-title">3. AI 균열 분석</div>
+            <div class="panel-sub">
+              「분석 실행」을 누르면 AI가 균열을 분석해 길이·폭·깊이와 심각도를 제공합니다.
+              (지금 코드는 데모용 랜덤 값입니다. 실제 앱에서는 AI API 응답으로 교체하면 됩니다.)
+            </div>
+            <div class="preview">
+              <div class="preview-box" id="previewBox">
+                <span style="font-size:0.78rem;color:var(--muted);padding:0.4rem;text-align:center;">
+                  균열 이미지를 선택하면 이 영역에 미리보기와 AI가 분석한 결과를 표시할 수 있습니다.
+                </span>
+              </div>
+              <div class="results">
+                <div style="margin-bottom:0.35rem;display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:0.8rem;color:var(--muted);">AI 분석 결과</span>
+                  <button id="analyzeBtn" class="btn btn-primary" type="button">분석 실행</button>
+                </div>
+                <div class="result-row">
+                  <span class="result-label">균열 길이</span>
+                  <span id="lenResult" class="result-value">-</span>
+                </div>
+                <div class="result-row">
+                  <span class="result-label">균열 폭</span>
+                  <span id="widthResult" class="result-value">-</span>
+                </div>
+                <div class="result-row">
+                  <span class="result-label">균열 깊이(추정)</span>
+                  <span id="depthResult" class="result-value">-</span>
+                </div>
+                <div class="result-row">
+                  <span class="result-label">심각도 등급</span>
+                  <span id="severityResult" class="result-value">-</span>
+                </div>
+                <div style="margin-top:0.5rem;">
+                  <span id="statusPill" class="status-pill" style="display:none;">
+                    <span class="status-dot"></span>
+                    <span id="statusText"></span>
+                  </span>
+                </div>
+                <div style="margin-top:0.6rem;font-size:0.72rem;color:var(--muted);">
+                  · 실제 서비스에서는 위치/시간/구간 정보를 함께 저장해 추적할 수 있습니다.<br>
+                  · 결과를 CSV / PDF 리포트로 내보내는 기능도 연동 가능합니다.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
 
-  <div class="card">
-    <div style="font-weight:600;font-size:14px;margin-bottom:4px;">결과</div>
-    <canvas id="canvas"></canvas>
-  </div>
+    <!-- HOW IT WORKS -->
+    <section id="how" class="section">
+      <div class="container">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">균열 감지의 동작 구조</h2>
+          </div>
+          <p class="section-subtitle">
+            카메라로 균열 영상을 취득하고, 가속도계로 기울기를 보정한 뒤,
+            AI가 균열 형상을 분석해 길이·폭·깊이와 심각도를 산정합니다.
+          </p>
+        </div>
 
-  <div class="card">
-    <div style="font-weight:600;font-size:14px;margin-bottom:4px;">요약</div>
-    <div id="resultText"></div>
-    <small>* 사람 눈 100%와 같지는 않지만, 주위 대비 어두운 이상 패턴을 자동으로 스캔합니다.</small>
-  </div>
+        <div class="feature-grid">
+          <article class="feature-card">
+            <div class="feature-label">Step 01</div>
+            <h3 class="feature-name">균열 영상 취득</h3>
+            <p class="feature-desc">
+              · 바닥 균열을 근접 촬영<br>
+              · 자/마커 등 기준 스케일을 함께 촬영해 픽셀-실거리 변환<br>
+              · 조도·블러 체크로 부적합 영상 사전 필터링
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-label">Step 02</div>
+            <h3 class="feature-name">가속도계 기반 자세 보정</h3>
+            <p class="feature-desc">
+              · 가속도계 + 중력 벡터로 카메라 기울기 추정<br>
+              · 촬영 시 카메라–바닥면 각도를 보정해 실제 거리 재계산<br>
+              · 촬영 높이·각도 등 계측 조건을 메타데이터로 저장
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-label">Step 03</div>
+            <h3 class="feature-name">AI 균열 분석</h3>
+            <p class="feature-desc">
+              · 균열 영역 세그멘테이션 및 중심선 추출<br>
+              · 길이·폭·깊이 추정 및 등급화(경미/주의/심각)<br>
+              · 시계열 비교로 균열 진행속도 모니터링
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section id="features" class="section">
+      <div class="container">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">균열 감지를 위한 핵심 기능</h2>
+          </div>
+          <p class="section-subtitle">
+            현장에서 촬영부터 분석·기록까지 한 번에 처리할 수 있도록
+            균열 감지는 수집–AI 분석–리포트 생성까지 모두 앱 안에서 제공합니다.
+          </p>
+        </div>
+
+        <div class="feature-grid">
+          <article class="feature-card">
+            <div class="feature-label">Field</div>
+            <h3 class="feature-name">현장 친화 UI</h3>
+            <p class="feature-desc">
+              · 한 손 조작 기준의 촬영 플로우<br>
+              · 적정 거리·각도 안내 가이드 오버레이<br>
+              · 오프라인 상태에서도 촬영 결과 임시 저장
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-label">AI</div>
+            <h3 class="feature-name">온디바이스 / 서버형 AI</h3>
+            <p class="feature-desc">
+              · 단말 내에서 기본 분석 수행<br>
+              · 고정밀 분석은 서버로 전송해 재분석<br>
+              · 동일 균열에 대한 재분석·비교 기능
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-label">Data</div>
+            <h3 class="feature-name">계측 데이터 관리</h3>
+            <p class="feature-desc">
+              · 위치·시간·구간 번호와 함께 저장<br>
+              · 엑셀 / PDF 리포트 자동 생성<br>
+              · 프로젝트 단위 균열 통계·지도화
+            </p>
+          </article>
+        </div>
+
+        <div class="cta">
+          <div>
+            <h2>균열 감지 앱에 AI·센서 로직만 연결하면 됩니다</h2>
+            <p>
+              이 웹페이지 구조에 맞춰 AI 분석 API와 센서 처리 모듈을 연동하면,
+              바로 현장에서 사용할 수 있는 균열 감지 서비스로 확장할 수 있습니다.
+            </p>
+          </div>
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+            <a href="#demo" class="btn btn-primary">웹 데모 먼저 확인</a>
+            <a href="mailto:contact@gyunyeol-app.com" class="btn btn-outline">문의 메일 보내기</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="container">
+      <footer>
+        <div>© <span id="year"></span> 균열 감지. All rights reserved.</div>
+        <div style="display:flex;gap:1rem;">
+          <a href="#">이용약관</a>
+          <a href="#">개인정보 처리방침</a>
+        </div>
+      </footer>
+    </div>
+  </main>
 
   <script>
-    const MAX_SIZE = 900;
-    const MIN_CRACK_LEN_CM = 5;
-    const LOCAL_R = 5; // 주변 윈도우 반경 (5 → 11x11)
+    // 푸터 연도
+    document.getElementById("year").textContent = new Date().getFullYear();
 
-    const fileInput = document.getElementById('fileInput');
-    const btnRun = document.getElementById('btnRun');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const statusEl = document.getElementById('status');
-    const resultText = document.getElementById('resultText');
-    const pxPerCmInput = document.getElementById('pxPerCm');
-    const sensitivityInput = document.getElementById('sensitivity');
-    const sensitivityLabel = document.getElementById('sensitivityLabel');
+    // 이미지 미리보기
+    const previewBox = document.getElementById("previewBox");
+    const fileInput = document.getElementById("fileInput");
+    const cameraInput = document.getElementById("cameraInput");
 
-    let currentFile = null;
+    function handleImageFile(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        previewBox.innerHTML = "";
+        const img = document.createElement("img");
+        img.src = e.target.result;
+        previewBox.appendChild(img);
+      };
+      reader.readAsDataURL(file);
+    }
 
-    sensitivityInput.addEventListener('input', () => {
-      sensitivityLabel.textContent = sensitivityInput.value;
+    fileInput.addEventListener("change", e => {
+      const file = e.target.files[0];
+      handleImageFile(file);
     });
 
-    fileInput.addEventListener('change', () => {
-      currentFile = fileInput.files[0] || null;
+    cameraInput.addEventListener("change", e => {
+      const file = e.target.files[0];
+      handleImageFile(file);
     });
 
-    btnRun.addEventListener('click', async () => {
-      if (!currentFile) {
-        statusEl.textContent = '먼저 사진을 선택해 주세요.';
+    // 가속도계 센서
+    const accelXEl = document.getElementById("accelX");
+    const accelYEl = document.getElementById("accelY");
+    const accelZEl = document.getElementById("accelZ");
+
+    function initAccel() {
+      if (typeof DeviceMotionEvent === "undefined") {
+        accelXEl.textContent = "지원되지 않음";
+        accelYEl.textContent = "지원되지 않음";
+        accelZEl.textContent = "지원되지 않음";
         return;
       }
-      statusEl.textContent = '이미지 로딩 및 자동 분석 중...';
 
-      try {
-        const img = await loadImage(currentFile);
-        await detectCracksLocal(img);
-        statusEl.textContent = '분석 완료.';
-      } catch (e) {
-        console.error(e);
-        statusEl.textContent = '분석 중 오류가 발생했습니다.';
+      if (typeof DeviceMotionEvent.requestPermission === "function") {
+        // iOS
+        DeviceMotionEvent.requestPermission().then(state => {
+          if (state === "granted") {
+            window.addEventListener("devicemotion", handleMotion);
+          } else {
+            accelXEl.textContent = "권한 거부됨";
+            accelYEl.textContent = "권한 거부됨";
+            accelZEl.textContent = "권한 거부됨";
+          }
+        }).catch(() => {
+          accelXEl.textContent = "권한 요청 실패";
+          accelYEl.textContent = "권한 요청 실패";
+          accelZEl.textContent = "권한 요청 실패";
+        });
+      } else {
+        // 안드로이드 등
+        window.addEventListener("devicemotion", handleMotion);
       }
+    }
+
+    function handleMotion(event) {
+      const acc = event.accelerationIncludingGravity || event.acceleration;
+      if (!acc) return;
+      const fx = acc.x ? acc.x.toFixed(2) : "0.00";
+      const fy = acc.y ? acc.y.toFixed(2) : "0.00";
+      const fz = acc.z ? acc.z.toFixed(2) : "0.00";
+      accelXEl.textContent = fx + " m/s²";
+      accelYEl.textContent = fy + " m/s²";
+      accelZEl.textContent = fz + " m/s²";
+    }
+
+    initAccel();
+
+    // 분석 실행 (데모용)
+    const analyzeBtn = document.getElementById("analyzeBtn");
+    const lenResult = document.getElementById("lenResult");
+    const widthResult = document.getElementById("widthResult");
+    const depthResult = document.getElementById("depthResult");
+    const severityResult = document.getElementById("severityResult");
+    const statusPill = document.getElementById("statusPill");
+    const statusText = document.getElementById("statusText");
+
+    analyzeBtn.addEventListener("click", async () => {
+      // 실제 구현 시:
+      // 1) 이미지 파일 + 센서 값(accx, accy, accz)을 FormData/JSON으로 서버에 전송
+      // 2) 서버에서 AI 모델로 분석 후 길이·폭·깊이·등급을 응답
+      // 여기서는 UI 테스트를 위해 랜덤 값 사용
+
+      const length = (0.5 + Math.random() * 3.0).toFixed(2);   // m
+      const width = (0.1 + Math.random() * 2.0).toFixed(2);    // mm
+      const depth = (1 + Math.random() * 25).toFixed(1);       // mm
+
+      let severity, status, cls;
+      const depthNum = parseFloat(depth);
+      if (depthNum < 5) {
+        severity = "경미";
+        status = "현장 모니터링 권장";
+        cls = "safe";
+      } else if (depthNum < 15) {
+        severity = "주의";
+        status = "보수 계획 검토 필요";
+        cls = "danger";
+      } else {
+        severity = "심각";
+        status = "긴급 보수 검토 필요";
+        cls = "danger";
+      }
+
+      lenResult.textContent = length + " m";
+      widthResult.textContent = width + " mm";
+      depthResult.textContent = depth + " mm";
+      severityResult.textContent = severity;
+      severityResult.classList.remove("safe", "danger");
+      severityResult.classList.add(cls);
+
+      statusText.textContent = status;
+      statusPill.style.display = "inline-flex";
     });
-
-    function loadImage(file) {
-      return new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => {
-          const img = new Image();
-          img.onload = () => resolve(img);
-          img.onerror = reject;
-          img.src = r.result;
-        };
-        r.onerror = reject;
-        r.readAsDataURL(file);
-      });
-    }
-
-    async function detectCracksLocal(img) {
-      const scale = Math.min(MAX_SIZE / img.width, MAX_SIZE / img.height, 1);
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      canvas.width = w;
-      canvas.height = h;
-      ctx.drawImage(img, 0, 0, w, h);
-      const imgData = ctx.getImageData(0, 0, w, h);
-
-      let gray = toGray(imgData, w, h);
-      gray = boxBlur(gray, w, h);  // 기본 블러로 노이즈 약간 줄이기
-
-      // 로컬 평균 / 분산 계산 (상당히 단순한 방법)
-      const localMean = localMeanFilter(gray, w, h, LOCAL_R);
-      const localVar  = localVariance(gray, localMean, w, h, LOCAL_R);
-      const localStd  = new Float32Array(w*h);
-      for (let i=0;i<w*h;i++) {
-        localStd[i] = Math.sqrt(Math.max(localVar[i], 0));
-      }
-
-      // 감도 → k로 변환 (0~100 → 0.2~1.2)
-      const sens = parseFloat(sensitivityInput.value) || 50;
-      const k = 1.2 - sens * 0.01;  // sens↑ → k↓ → 더 민감 (더 많이 탐지)
-
-      // 로컬 기준으로 "비정상적으로 어두운" 픽셀 탐지
-      const darkMask = new Uint8Array(w*h);
-      for (let i=0;i<w*h;i++) {
-        const thr = localMean[i] - k * localStd[i];
-        if (gray[i] < thr) darkMask[i] = 1; else darkMask[i] = 0;
-      }
-
-      const pxPerCm = parseFloat(pxPerCmInput.value) || 40;
-      const minLenPx = MIN_CRACK_LEN_CM * pxPerCm;
-
-      const comps = findComponents(darkMask, w, h, minLenPx);
-      const cracks = comps.filter(c => c.isCrack);
-
-      // 결과 그림
-      ctx.putImageData(imgData, 0, 0);
-      const overlay = ctx.getImageData(0, 0, w, h);
-      const d = overlay.data;
-      for (const c of cracks) {
-        for (const [x,y] of c.pixels) {
-          const i = (y*w + x)*4;
-          d[i] = 255; d[i+1] = 0; d[i+2] = 0; // 빨강
-        }
-      }
-      ctx.putImageData(overlay, 0, 0);
-
-      const avgLenCm = cracks.length
-        ? cracks.reduce((s,c)=>s+c.lenPx,0)/cracks.length/pxPerCm
-        : 0;
-
-      resultText.textContent =
-        `· 감도: ${sens} (k=${k.toFixed(2)})\n` +
-        `· 균열 후보 개수(길이 ≥ ${MIN_CRACK_LEN_CM}cm): ${cracks.length} 개\n` +
-        `· 균열 평균 길이(대략): ${avgLenCm.toFixed(1)} cm\n` +
-        `· px/cm 설정: ${pxPerCm}`;
-    }
-
-    function toGray(imgData, w, h) {
-      const g = new Float32Array(w*h);
-      const d = imgData.data;
-      for (let i=0;i<w*h;i++) {
-        const j=i*4;
-        const r=d[j], g1=d[j+1], b=d[j+2];
-        g[i] = 0.299*r + 0.587*g1 + 0.114*b;
-      }
-      return g;
-    }
-
-    function boxBlur(gray, w, h) {
-      const out = new Float32Array(w*h);
-      const k = 1;
-      for (let y=0;y<h;y++) {
-        for (let x=0;x<w;x++) {
-          let sum=0,cnt=0;
-          for (let j=-k;j<=k;j++) {
-            for (let i=-k;i<=k;i++) {
-              const nx=x+i, ny=y+j;
-              if (nx<0||ny<0||nx>=w||ny>=h) continue;
-              sum += gray[ny*w+nx]; cnt++;
-            }
-          }
-          out[y*w+x] = sum/cnt;
-        }
-      }
-      return out;
-    }
-
-    function localMeanFilter(gray, w, h, R) {
-      const out = new Float32Array(w*h);
-      for (let y=0;y<h;y++) {
-        for (let x=0;x<w;x++) {
-          let sum=0,cnt=0;
-          for (let j=-R;j<=R;j++) {
-            for (let i=-R;i<=R;i++) {
-              const nx=x+i, ny=y+j;
-              if (nx<0||ny<0||nx>=w||ny>=h) continue;
-              sum += gray[ny*w+nx]; cnt++;
-            }
-          }
-          out[y*w+x] = sum/cnt;
-        }
-      }
-      return out;
-    }
-
-    function localVariance(gray, mean, w, h, R) {
-      const out = new Float32Array(w*h);
-      for (let y=0;y<h;y++) {
-        for (let x=0;x<w;x++) {
-          let sum=0,cnt=0;
-          for (let j=-R;j<=R;j++) {
-            for (let i=-R;i<=R;i++) {
-              const nx=x+i, ny=y+j;
-              if (nx<0||ny<0||nx>=w||ny>=h) continue;
-              const diff = gray[ny*w+nx] - mean[y*w+x];
-              sum += diff*diff;
-              cnt++;
-            }
-          }
-          out[y*w+x] = cnt>0 ? sum/cnt : 0;
-        }
-      }
-      return out;
-    }
-
-    function findComponents(mask, w, h, minLenPx) {
-      const visited = new Uint8Array(w*h);
-      const comps = [];
-      const dirs = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
-      const idx=(x,y)=>y*w+x;
-
-      for (let y=0;y<h;y++) {
-        for (let x=0;x<w;x++) {
-          const i0 = idx(x,y);
-          if (mask[i0]!==1 || visited[i0]) continue;
-
-          const q=[[x,y]];
-          visited[i0]=1;
-          const pixels=[];
-          let minX=x,maxX=x,minY=y,maxY=y;
-
-          while(q.length){
-            const [cx,cy]=q.shift();
-            pixels.push([cx,cy]);
-            if(cx<minX)minX=cx; if(cx>maxX)maxX=cx;
-            if(cy<minY)minY=cy; if(cy>maxY)maxY=cy;
-            for(const[dX,dY] of dirs){
-              const nx=cx+dX, ny=cy+dY;
-              if(nx<0||ny<0||nx>=w||ny>=h) continue;
-              const ii=idx(nx,ny);
-              if(mask[ii]===1 && !visited[ii]){
-                visited[ii]=1; q.push([nx,ny]);
-              }
-            }
-          }
-
-          if (pixels.length < 10) { // 너무 작은 얼룩은 버리기
-            comps.push({pixels,lenPx:0,isCrack:false});
-            continue;
-          }
-
-          const [p1,p2] = endpoints(pixels);
-          const dx=p2[0]-p1[0], dy=p2[1]-p1[1];
-          const lenPx = Math.sqrt(dx*dx+dy*dy);
-
-          const isCrack = lenPx >= minLenPx;
-          comps.push({pixels,lenPx,isCrack});
-        }
-      }
-      return comps;
-    }
-
-    function endpoints(pixels){
-      if(!pixels.length) return [[0,0],[0,0]];
-      let a=pixels[0], b=a, maxD=-1;
-      for(const p of pixels){
-        const d=dist2(a,p); if(d>maxD){maxD=d; b=p;}
-      }
-      maxD=-1; let c=b;
-      for(const p of pixels){
-        const d=dist2(b,p); if(d>maxD){maxD=d; c=p;}
-      }
-      return [b,c];
-    }
-    function dist2(p,q){
-      const dx=p[0]-q[0], dy=p[1]-q[1];
-      return dx*dx + dy*dy;
-    }
   </script>
 </body>
 </html>
