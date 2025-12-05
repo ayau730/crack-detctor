@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>자동 균열 감지 (주변 대비 이상 어두운 부분 탐지)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      margin:0; padding:16px; background:#f3f4f6;
+    }
+    h1 { font-size:20px; margin-bottom:8px; }
+    .card {
+      background:#fff; border-radius:10px; padding:12px; margin-bottom:12px;
+      box-shadow:0 2px 4px rgba(0,0,0,0.08);
+    }
+    label { font-size:14px; font-weight:500; }
+    input[type="file"], input[type="number"], input[type="range"] {
+      margin-top:4px; margin-bottom:8px; font-size:14px;
+    }
+    input[type="number"] { padding:4px 8px; width:120px; }
+    button {
+      padding:8px 14px; border-radius:8px; border:none;
+      background:#2563eb; color:#fff; font-size:14px; cursor:pointer;
+      margin-top:4px;
+    }
+    button:active { opacity:0.9; }
+    canvas {
+      width:100%; max-width:480px; border-radius:8px; background:#111827;
+    }
+    #status { font-size:13px; color:#4b5563; margin-top:4px; }
+    #resultText { font-size:14px; white-space:pre-line; }
+    small { font-size:12px; color:#6b7280; }
+  </style>
+</head>
+<body>
+  <h1>자동 균열 감지 (로컬 대비 이상 어두운 부분)</h1>
+
+  <div class="card">
+    <p style="font-size:14px;">
+      한 장의 사진에서, <strong>주변보다 비정상적으로 어두운 긴 띠</strong>를 자동으로 찾아<br/>
+      균열 후보를 <strong>빨간색으로 표시</strong>합니다. (딥러닝 없음, 순수 영상처리)
+    </p>
+
+    <label>사진 속 1cm가 몇 픽셀인지 (대략, 모르면 40):</label><br/>
+    <input id="pxPerCm" type="number" min="1" value="40" /> px/cm
+    <br/>
+    <small>예) 화면에서 자로 잰 10cm ≈ 400px → 1cm ≈ 40px (5cm ≈ 200px)</small><br/><br/>
+
+    <label>감도 (높을수록 민감, 더 많이 잡음): <span id="sensitivityLabel">50</span></label><br/>
+    <input id="sensitivity" type="range" min="0" max="100" value="50" />
+    <br/>
+
+    <label>사진 선택:</label><br/>
+    <input id="fileInput" type="file" accept="image/*" /><br/>
+    <button id="btnRun">자동 균열 감지</button>
+    <div id="status">사진을 선택한 뒤 [자동 균열 감지]를 누르세요.</div>
+  </div>
+
+  <div class="card">
+    <div style="font-weight:600;font-size:14px;margin-bottom:4px;">결과</div>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div class="card">
+    <div style="font-weight:600;font-size:14px;margin-bottom:4px;">요약</div>
+    <div id="resultText"></div>
+    <small>* 사람 눈 100%와 같지는 않지만, 주위 대비 어두운 이상 패턴을 자동으로 스캔합니다.</small>
+  </div>
+
+  <script>
+    const MAX_SIZE = 900;
+    const MIN_CRACK_LEN_CM = 5;
+    const LOCAL_R = 5; // 주변 윈도우 반경 (5 → 11x11)
+
+    const fileInput = document.getElementById('fileInput');
+    const btnRun = document.getElementById('btnRun');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('status');
+    const resultText = document.getElementById('resultText');
+    const pxPerCmInput = document.getElementById('pxPerCm');
+    const sensitivityInput = document.getElementById('sensitivity');
+    const sensitivityLabel = document.getElementById('sensitivityLabel');
+
+    let currentFile = null;
+
+    sensitivityInput.addEventListener('input', () => {
+      sensitivityLabel.textContent = sensitivityInput.value;
+    });
+
+    fileInput.addEventListener('change', () => {
+      currentFile = fileInput.files[0] || null;
+    });
+
+    btnRun.addEventListener('click', async () => {
+      if (!currentFile) {
+        statusEl.textContent = '먼저 사진을 선택해 주세요.';
+        return;
+      }
+      statusEl.textContent = '이미지 로딩 및 자동 분석 중...';
+
+      try {
+        const img = await loadImage(currentFile);
+        await detectCracksLocal(img);
+        statusEl.textContent = '분석 완료.';
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = '분석 중 오류가 발생했습니다.';
+      }
+    });
+
+    function loadImage(file) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = r.result;
+        };
+        r.onerror = reject;
+        r.readAsDataURL(file);
+      });
+    }
+
+    async function detectCracksLocal(img) {
+      const scale = Math.min(MAX_SIZE / img.width, MAX_SIZE / img.height, 1);
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      canvas.width = w;
+      canvas.height = h;
+      ctx.drawImage(img, 0, 0, w, h);
+      const imgData = ctx.getImageData(0, 0, w, h);
+
+      let gray = toGray(imgData, w, h);
+      gray = boxBlur(gray, w, h);  // 기본 블러로 노이즈 약간 줄이기
+
+      // 로컬 평균 / 분산 계산 (상당히 단순한 방법)
+      const localMean = localMeanFilter(gray, w, h, LOCAL_R);
+      const localVar  = localVariance(gray, localMean, w, h, LOCAL_R);
+      const localStd  = new Float32Array(w*h);
+      for (let i=0;i<w*h;i++) {
+        localStd[i] = Math.sqrt(Math.max(localVar[i], 0));
+      }
+
+      // 감도 → k로 변환 (0~100 → 0.2~1.2)
+      const sens = parseFloat(sensitivityInput.value) || 50;
+      const k = 1.2 - sens * 0.01;  // sens↑ → k↓ → 더 민감 (더 많이 탐지)
+
+      // 로컬 기준으로 "비정상적으로 어두운" 픽셀 탐지
+      const darkMask = new Uint8Array(w*h);
+      for (let i=0;i<w*h;i++) {
+        const thr = localMean[i] - k * localStd[i];
+        if (gray[i] < thr) darkMask[i] = 1; else darkMask[i] = 0;
+      }
+
+      const pxPerCm = parseFloat(pxPerCmInput.value) || 40;
+      const minLenPx = MIN_CRACK_LEN_CM * pxPerCm;
+
+      const comps = findComponents(darkMask, w, h, minLenPx);
+      const cracks = comps.filter(c => c.isCrack);
+
+      // 결과 그림
+      ctx.putImageData(imgData, 0, 0);
+      const overlay = ctx.getImageData(0, 0, w, h);
+      const d = overlay.data;
+      for (const c of cracks) {
+        for (const [x,y] of c.pixels) {
+          const i = (y*w + x)*4;
+          d[i] = 255; d[i+1] = 0; d[i+2] = 0; // 빨강
+        }
+      }
+      ctx.putImageData(overlay, 0, 0);
+
+      const avgLenCm = cracks.length
+        ? cracks.reduce((s,c)=>s+c.lenPx,0)/cracks.length/pxPerCm
+        : 0;
+
+      resultText.textContent =
+        `· 감도: ${sens} (k=${k.toFixed(2)})\n` +
+        `· 균열 후보 개수(길이 ≥ ${MIN_CRACK_LEN_CM}cm): ${cracks.length} 개\n` +
+        `· 균열 평균 길이(대략): ${avgLenCm.toFixed(1)} cm\n` +
+        `· px/cm 설정: ${pxPerCm}`;
+    }
+
+    function toGray(imgData, w, h) {
+      const g = new Float32Array(w*h);
+      const d = imgData.data;
+      for (let i=0;i<w*h;i++) {
+        const j=i*4;
+        const r=d[j], g1=d[j+1], b=d[j+2];
+        g[i] = 0.299*r + 0.587*g1 + 0.114*b;
+      }
+      return g;
+    }
+
+    function boxBlur(gray, w, h) {
+      const out = new Float32Array(w*h);
+      const k = 1;
+      for (let y=0;y<h;y++) {
+        for (let x=0;x<w;x++) {
+          let sum=0,cnt=0;
+          for (let j=-k;j<=k;j++) {
+            for (let i=-k;i<=k;i++) {
+              const nx=x+i, ny=y+j;
+              if (nx<0||ny<0||nx>=w||ny>=h) continue;
+              sum += gray[ny*w+nx]; cnt++;
+            }
+          }
+          out[y*w+x] = sum/cnt;
+        }
+      }
+      return out;
+    }
+
+    function localMeanFilter(gray, w, h, R) {
+      const out = new Float32Array(w*h);
+      for (let y=0;y<h;y++) {
+        for (let x=0;x<w;x++) {
+          let sum=0,cnt=0;
+          for (let j=-R;j<=R;j++) {
+            for (let i=-R;i<=R;i++) {
+              const nx=x+i, ny=y+j;
+              if (nx<0||ny<0||nx>=w||ny>=h) continue;
+              sum += gray[ny*w+nx]; cnt++;
+            }
+          }
+          out[y*w+x] = sum/cnt;
+        }
+      }
+      return out;
+    }
+
+    function localVariance(gray, mean, w, h, R) {
+      const out = new Float32Array(w*h);
+      for (let y=0;y<h;y++) {
+        for (let x=0;x<w;x++) {
+          let sum=0,cnt=0;
+          for (let j=-R;j<=R;j++) {
+            for (let i=-R;i<=R;i++) {
+              const nx=x+i, ny=y+j;
+              if (nx<0||ny<0||nx>=w||ny>=h) continue;
+              const diff = gray[ny*w+nx] - mean[y*w+x];
+              sum += diff*diff;
+              cnt++;
+            }
+          }
+          out[y*w+x] = cnt>0 ? sum/cnt : 0;
+        }
+      }
+      return out;
+    }
+
+    function findComponents(mask, w, h, minLenPx) {
+      const visited = new Uint8Array(w*h);
+      const comps = [];
+      const dirs = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+      const idx=(x,y)=>y*w+x;
+
+      for (let y=0;y<h;y++) {
+        for (let x=0;x<w;x++) {
+          const i0 = idx(x,y);
+          if (mask[i0]!==1 || visited[i0]) continue;
+
+          const q=[[x,y]];
+          visited[i0]=1;
+          const pixels=[];
+          let minX=x,maxX=x,minY=y,maxY=y;
+
+          while(q.length){
+            const [cx,cy]=q.shift();
+            pixels.push([cx,cy]);
+            if(cx<minX)minX=cx; if(cx>maxX)maxX=cx;
+            if(cy<minY)minY=cy; if(cy>maxY)maxY=cy;
+            for(const[dX,dY] of dirs){
+              const nx=cx+dX, ny=cy+dY;
+              if(nx<0||ny<0||nx>=w||ny>=h) continue;
+              const ii=idx(nx,ny);
+              if(mask[ii]===1 && !visited[ii]){
+                visited[ii]=1; q.push([nx,ny]);
+              }
+            }
+          }
+
+          if (pixels.length < 10) { // 너무 작은 얼룩은 버리기
+            comps.push({pixels,lenPx:0,isCrack:false});
+            continue;
+          }
+
+          const [p1,p2] = endpoints(pixels);
+          const dx=p2[0]-p1[0], dy=p2[1]-p1[1];
+          const lenPx = Math.sqrt(dx*dx+dy*dy);
+
+          const isCrack = lenPx >= minLenPx;
+          comps.push({pixels,lenPx,isCrack});
+        }
+      }
+      return comps;
+    }
+
+    function endpoints(pixels){
+      if(!pixels.length) return [[0,0],[0,0]];
+      let a=pixels[0], b=a, maxD=-1;
+      for(const p of pixels){
+        const d=dist2(a,p); if(d>maxD){maxD=d; b=p;}
+      }
+      maxD=-1; let c=b;
+      for(const p of pixels){
+        const d=dist2(b,p); if(d>maxD){maxD=d; c=p;}
+      }
+      return [b,c];
+    }
+    function dist2(p,q){
+      const dx=p[0]-q[0], dy=p[1]-q[1];
+      return dx*dx + dy*dy;
+    }
+  </script>
+</body>
+</html>
